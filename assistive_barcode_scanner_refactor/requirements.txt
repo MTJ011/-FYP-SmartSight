@@ -1,0 +1,35 @@
+# ── Computer Vision ───────────────────────────────────────────
+opencv-python>=4.8.0
+
+# ── Barcode Detection ─────────────────────────────────────────
+zxing-cpp>=2.2.0                  # Native C++ barcode decoder (no Java required)
+ultralytics>=8.0.0                # YOLOv8 barcode region detection
+
+# ── OCR Fallback ──────────────────────────────────────────────
+easyocr>=1.7.1                    # Product label text recognition
+
+# ── Text-to-Speech ────────────────────────────────────────────
+pyttsx3>=2.90                     # Offline TTS (no internet required)
+
+# ── Speech Recognition ────────────────────────────────────────
+SpeechRecognition>=3.10.0         # Voice command input
+pyaudio>=0.2.13                   # Microphone access (required by SpeechRecognition)
+
+# ── Deep Learning Backend ─────────────────────────────────────
+# PyTorch — install the correct build for your platform:
+#
+# CPU only (Windows/Linux):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#
+# CUDA 11.8 (Windows/Linux GPU):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+#
+# Jetson Nano — use NVIDIA's pre-built wheel:
+#   https://developer.nvidia.com/embedded/downloads#?search=torch
+#
+torch>=2.0.0
+torchvision>=0.15.0
+
+# ── Utilities ─────────────────────────────────────────────────
+numpy>=1.24.0
+requests>=2.31.0                  # Online product API lookups
