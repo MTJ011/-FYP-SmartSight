@@ -6,7 +6,7 @@ from services.guidance_service import find_barcode_region, get_guidance
 from services.beep_service import update_beep
 from services.voice_command_service import get_command
 
-SEARCH_TIMEOUT = 5
+SEARCH_TIMEOUT = 7
 start_time = time.time()
 frame_count = 0
 last_guidance_time = 0

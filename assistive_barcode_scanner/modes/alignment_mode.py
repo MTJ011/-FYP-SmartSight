@@ -6,7 +6,7 @@ from services.beep_service import update_beep
 
 last_guidance_time = 0
 last_text = ""
-GUIDANCE_INTERVAL = 2
+GUIDANCE_INTERVAL = 6
 
 
 def run(frame):

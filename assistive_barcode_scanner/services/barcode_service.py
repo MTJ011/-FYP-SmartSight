@@ -70,7 +70,7 @@ def detect_barcode(frame):
     ocr_product_name = None
 
     # ⚡ PERFORMANCE: skip frames
-    if frame_counter % 3 != 0:
+    if frame_counter % 4 != 0:
         return detected_codes, None
 
     try:
