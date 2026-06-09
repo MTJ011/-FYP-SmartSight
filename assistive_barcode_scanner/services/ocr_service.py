@@ -91,13 +91,30 @@ KNOWN_PRODUCTS = [
     "National Foods",
     "Knorr Noodles",
     "Indomie Noodles",
+
+    # Slanty
+    "Slanty Vegetable",
+    "Slanty Jalapeno",
+    "Slanty Salted",
 ]
 
 
 BRAND_ONLY_WORDS = {
-    "nestle", "lays", "lay's", "pringles", "cheetos",
+    "nestle", "lays", "lay", "pringles", "cheetos",
     "pepsi", "sprite", "fanta", "oreo", "tuc",
-    "knorr", "shan", "national", "kolson"
+    "knorr", "shan", "national", "kolson", "slanty"
+}
+
+
+# ── ALIAS MATCHING ──────────────────────────────────────────────────────
+PRODUCT_ALIASES = {
+    "Slanty Vegetable": [
+        "SLANTY", "SLAHTY", "SLAHTV", "CLANTY", "SLANFY", "SLANTI",
+        "VEGETABLE", "VCGCLABLE", "VCGCTABLE", "VEGCLABLE"
+    ],
+    "Nestle Fruita Vitals Apple Nectar": [
+        "FRUITA VITALS", "FRUITA", "VITALS", "NECTAR", "NECIAR", "APPLE NECTAR"
+    ],
 }
 
 
@@ -181,14 +198,24 @@ def _fix_common_ocr_errors(text: str) -> str:
 
         # Fruita Vitals
         "FRUITA": "Fruita",
-        "FRUITA VITALS": "Fruita Vitals",
         "VITALS": "Vitals",
         "VTALS": "Vitals",
         "VLS": "Vitals",
         "BUITA": "Fruita",
         "RUITA": "Fruita",
         "NECTAR": "Nectar",
+        "NECIAR": "Nectar",
         "NecTAR": "Nectar",
+
+        # Slanty
+        "SLAHTY": "SLANTY",
+        "SLAHTV": "SLANTY",
+        "CLANTY": "SLANTY",
+        "SLANFY": "SLANTY",
+        "SLANTI": "SLANTY",
+        "Vcgclable": "Vegetable",
+        "Vcgctable": "Vegetable",
+        "Vegclable": "Vegetable",
     }
 
     for wrong, correct in replacements.items():
@@ -200,21 +227,19 @@ def _fix_common_ocr_errors(text: str) -> str:
 def _has_enough_overlap(ocr_text: str, product_name: str) -> bool:
     ocr_words = _words(ocr_text)
     product_words = _words(product_name)
-
     overlap = ocr_words.intersection(product_words)
 
-    # Exact/small products like Oreo, Pepsi, Sprite are allowed by one strong word
+    # Small products like Oreo, Pepsi, Sprite can match by one strong word.
     if len(product_words) <= 2:
         return len(overlap) >= 1
 
-    # Multi-word products need at least 2 matching words
+    # Multi-word products need at least 2 matching words.
     return len(overlap) >= 2
 
 
 def _is_brand_only_match(ocr_text: str, product_name: str) -> bool:
     ocr_words = _words(ocr_text)
     product_words = _words(product_name)
-
     overlap = ocr_words.intersection(product_words)
 
     if len(overlap) == 1:
@@ -227,22 +252,17 @@ def _is_brand_only_match(ocr_text: str, product_name: str) -> bool:
 # ── IMAGE PREPROCESSING ────────────────────────────────────────────────
 def _preprocess_for_ocr(frame):
     variants = []
-
     h, w = frame.shape[:2]
 
+    # Upscale small frames for better OCR.
     scale = max(1, 900 // w)
     if scale > 1:
-        frame = cv2.resize(
-            frame,
-            (w * scale, h * scale),
-            interpolation=cv2.INTER_CUBIC
-        )
+        frame = cv2.resize(frame, (w * scale, h * scale), interpolation=cv2.INTER_CUBIC)
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-    clahe_img = clahe.apply(gray)
-    variants.append(clahe_img)
+    variants.append(clahe.apply(gray))
 
     blurred = cv2.GaussianBlur(gray, (3, 3), 0)
     sharpened = cv2.addWeighted(gray, 1.8, blurred, -0.8, 0)
@@ -250,23 +270,48 @@ def _preprocess_for_ocr(frame):
 
     _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     variants.append(otsu)
-
     variants.append(cv2.bitwise_not(otsu))
 
+    # Original colored frame also helps sometimes.
     variants.append(frame)
 
     return variants
+
+
+# ── ALIAS DETECTION ─────────────────────────────────────────────────────
+def _alias_match(text: str):
+    upper_text = text.upper()
+
+    # Special case: Slanty often appears clearly but vegetable is noisy.
+    slanty_aliases = ["SLANTY", "SLAHTY", "SLAHTV", "CLANTY", "SLANFY", "SLANTI"]
+    vegetable_aliases = ["VEGETABLE", "VCGCLABLE", "VCGCTABLE", "VEGCLABLE"]
+
+    has_slanty = any(alias in upper_text for alias in slanty_aliases)
+    has_vegetable = any(alias in upper_text for alias in vegetable_aliases)
+
+    if has_slanty and has_vegetable:
+        return "Slanty Vegetable", 95
+
+    if has_slanty:
+        # Return brand-level result instead of garbage OCR.
+        return "Slanty Vegetable", 88
+
+    for product_name, aliases in PRODUCT_ALIASES.items():
+        hits = sum(1 for alias in aliases if alias.upper() in upper_text)
+        if hits >= 2:
+            return product_name, 90
+
+    return None, 0
 
 
 # ── FUZZY MATCHING ─────────────────────────────────────────────────────
 def _fuzzy_match(text: str):
     """
     Safer fuzzy matching:
-    - Full OCR phrase first
-    - No single brand-only false positives
-    - Requires word overlap
+    - Matches full OCR phrase first.
+    - Blocks single brand-only false positives.
+    - Requires word overlap.
     """
-
     if not text or len(text.strip()) < 3:
         return None, 0
 
@@ -274,7 +319,6 @@ def _fuzzy_match(text: str):
     normalized_text = _normalize_for_match(fixed_text)
 
     candidates = []
-
     scorers = [
         fuzz.token_set_ratio,
         fuzz.token_sort_ratio,
@@ -283,22 +327,20 @@ def _fuzzy_match(text: str):
     ]
 
     for scorer in scorers:
-        match = process.extractOne(
-            normalized_text,
-            KNOWN_PRODUCTS,
-            scorer=scorer
-        )
+        match = process.extractOne(normalized_text, KNOWN_PRODUCTS, scorer=scorer)
 
-        if match:
-            product_name, score, _ = match
+        if not match:
+            continue
 
-            if not _has_enough_overlap(fixed_text, product_name):
-                continue
+        product_name, score, _ = match
 
-            if _is_brand_only_match(fixed_text, product_name):
-                continue
+        if not _has_enough_overlap(fixed_text, product_name):
+            continue
 
-            candidates.append((product_name, score))
+        if _is_brand_only_match(fixed_text, product_name):
+            continue
+
+        candidates.append((product_name, score))
 
     if not candidates:
         return None, 0
@@ -315,7 +357,6 @@ def _fuzzy_match(text: str):
 def detect_product_name_ocr(frame, min_confidence=0.35):
     reader = _get_reader()
     variants = _preprocess_for_ocr(frame)
-
     collected_texts = []
 
     for img in variants:
@@ -347,16 +388,22 @@ def detect_product_name_ocr(frame, min_confidence=0.35):
 
     print(f"🔤 OCR combined text: {combined_text}")
 
-    # IMPORTANT:
-    # Do NOT match single tokens first.
-    # That caused: "Nestle" → "Nestle Milkpak"
-    product, score = _fuzzy_match(combined_text)
+    # 1. Alias match first. This fixes cases like:
+    # SLANTY SLAHTV CLANTY Vcgclable → Slanty Vegetable
+    alias_product, alias_score = _alias_match(combined_text)
+    if alias_product:
+        print(f"✅ OCR alias match: {alias_product} ({alias_score})")
+        return alias_product
 
+    # 2. Full phrase fuzzy matching.
+    # Do NOT match single tokens first because it causes wrong matches like:
+    # Nestle → Nestle Milkpak
+    product, score = _fuzzy_match(combined_text)
     if product:
         print(f"✅ OCR matched product: {product} ({score})")
         return product
 
-    # Optional phrase fallback: test useful 2-5 word chunks
+    # 3. Phrase fallback: useful 2-5 word chunks only.
     words = combined_text.split()
     phrase_candidates = []
 
@@ -369,17 +416,16 @@ def detect_product_name_ocr(frame, min_confidence=0.35):
                 phrase_candidates.append((product, score, phrase))
 
     if phrase_candidates:
-        best_product, best_score, best_phrase = max(
-            phrase_candidates,
-            key=lambda x: x[1]
-        )
-        print(
-            f"✅ Phrase match: '{best_phrase}' → {best_product} ({best_score})"
-        )
+        best_product, best_score, best_phrase = max(phrase_candidates, key=lambda x: x[1])
+        print(f"✅ Phrase match: '{best_phrase}' → {best_product} ({best_score})")
         return best_product
 
-    print("⚠️ No strong database match. Returning OCR text.")
-    return combined_text
+    # IMPORTANT:
+    # Never return combined_text here.
+    # Returning raw OCR text makes the speaker say garbage like:
+    # "SLANTY SLAHTV CLANTY Vcgclable"
+    print("⚠️ No strong database match. Ignoring noisy OCR text.")
+    return None
 
 
 # ── DRAW RESULT ────────────────────────────────────────────────────────
